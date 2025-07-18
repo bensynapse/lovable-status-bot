@@ -40,48 +40,15 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install feedparser requests
     
     - name: Run status monitor
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-        ONLY_ACTIVE_INCIDENTS: 'true'
-        INITIAL_LOAD_DAYS: '7'
-        CHECK_INTERVAL_MINUTES: '0'  # Run once per workflow
+        RSS_FEED_URL: https://status.lovable.dev/feed.rss
       run: |
-        # Create a minimal run script
-        cat > run_github_action.py << 'EOF'
-import asyncio
-import sys
-import os
-
-# Set up Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Import after path setup
-from main import StatusBot, config
-
-async def run_once():
-    try:
-        print("Starting Lovable Status Bot (GitHub Action mode)...")
-        print(f"Channel ID: {config.TELEGRAM_CHANNEL_ID}")
-        print(f"Only Active Incidents: {config.ONLY_ACTIVE_INCIDENTS}")
-        
-        bot = StatusBot()
-        await bot.fetch_and_process_feed()
-        print("Bot run completed successfully")
-    except Exception as e:
-        print(f"Error running bot: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-if __name__ == "__main__":
-    asyncio.run(run_once())
-EOF
-        
-        python run_github_action.py
+        python monitor_simple.py
     
     - name: Commit database changes
       run: |
