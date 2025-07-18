@@ -138,9 +138,34 @@ def save_incident(incident):
     conn.commit()
     conn.close()
 
+def send_test_message():
+    """Send a test message to verify bot is working"""
+    test_message = """🔔 *Bot Status Check*
+
+✅ Lovable Status Bot is active and monitoring
+📡 Checking every 5 minutes for new incidents
+🔍 Currently filtering: Active incidents only
+
+_This is an automated test message_"""
+    
+    print("Sending test message...")
+    message_id = send_telegram_message(test_message)
+    if message_id:
+        print(f"Test message sent successfully! ID: {message_id}")
+        return True
+    else:
+        print("Failed to send test message")
+        return False
+
 def main():
     print("Starting Lovable Status Monitor (Simple Mode)")
+    print(f"Bot Token: {TELEGRAM_BOT_TOKEN[:10]}...")
     print(f"Channel: {TELEGRAM_CHANNEL_ID}")
+    print(f"Feed URL: {RSS_FEED_URL}")
+    
+    # Send test message on first run or if requested
+    if os.getenv('SEND_TEST_MESSAGE', 'false').lower() == 'true' or not os.path.exists(DATABASE_PATH):
+        send_test_message()
     
     # Initialize database
     init_database()
@@ -153,9 +178,13 @@ def main():
         print(f"Error parsing feed: {feed.bozo_exception}")
         return
     
-    print(f"Found {len(feed.entries)} entries")
+    print(f"Found {len(feed.entries)} entries in feed")
     
-    # Process entries
+    # Track what we process
+    active_incidents = 0
+    new_incidents = 0
+    
+    # Process entries (newest first)
     for entry in feed.entries:
         incident = {
             'guid': entry.get('guid', entry.get('id', '')),
@@ -166,26 +195,38 @@ def main():
         
         incident['status'] = extract_status(incident['description'] + ' ' + incident['title'])
         
-        # Skip resolved incidents
-        if incident['status'] == 'Resolved':
-            print(f"Skipping resolved incident: {incident['title']}")
+        print(f"\nProcessing: {incident['title']} - Status: {incident['status']}")
+        
+        # Skip resolved incidents (unless testing)
+        if incident['status'] == 'Resolved' and os.getenv('SHOW_RESOLVED', 'false').lower() != 'true':
+            print(f"  → Skipping (resolved)")
             continue
+        
+        active_incidents += 1
         
         # Check if already posted
         if check_incident_exists(incident['guid']):
-            print(f"Already posted: {incident['title']}")
+            print(f"  → Already posted")
             continue
         
         # Send to Telegram
-        print(f"Posting new incident: {incident['title']} - Status: {incident['status']}")
+        print(f"  → Posting to Telegram...")
         message = format_message(incident)
         message_id = send_telegram_message(message)
         
         if message_id:
             incident['telegram_message_id'] = message_id
             save_incident(incident)
+            new_incidents += 1
+            print(f"  → Success! Message ID: {message_id}")
+        else:
+            print(f"  → Failed to send message")
     
-    print("Monitor run completed")
+    print(f"\nSummary:")
+    print(f"- Total entries: {len(feed.entries)}")
+    print(f"- Active incidents: {active_incidents}")
+    print(f"- New incidents posted: {new_incidents}")
+    print("Monitor run completed successfully")
 
 if __name__ == "__main__":
     # Check required environment variables
