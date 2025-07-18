@@ -5,6 +5,15 @@ on:
     # Run every 5 minutes
     - cron: '*/5 * * * *'
   workflow_dispatch:  # Allow manual trigger
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'lovable_status.db'
+      - '**.md'
+
+permissions:
+  contents: write
+  actions: read
 
 jobs:
   check-status:
@@ -12,9 +21,11 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
         
@@ -35,39 +46,65 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-        ONLY_ACTIVE_INCIDENTS: true
-        CHECK_INTERVAL_MINUTES: 0  # Run once per workflow
+        ONLY_ACTIVE_INCIDENTS: 'true'
+        INITIAL_LOAD_DAYS: '7'
+        CHECK_INTERVAL_MINUTES: '0'  # Run once per workflow
       run: |
-        # Create a temporary script to run once
-        cat > run_once.py << 'EOF'
-        import asyncio
-        import sys
-        import os
-        sys.path.insert(0, os.path.dirname(__file__))
-        from main import StatusBot
+        # Create a minimal run script
+        cat > run_github_action.py << 'EOF'
+import asyncio
+import sys
+import os
+
+# Set up Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import after path setup
+from main import StatusBot, config
+
+async def run_once():
+    try:
+        print("Starting Lovable Status Bot (GitHub Action mode)...")
+        print(f"Channel ID: {config.TELEGRAM_CHANNEL_ID}")
+        print(f"Only Active Incidents: {config.ONLY_ACTIVE_INCIDENTS}")
         
-        async def run_once():
-            bot = StatusBot()
-            await bot.fetch_and_process_feed()
-            
-        asyncio.run(run_once())
-        EOF
+        bot = StatusBot()
+        await bot.fetch_and_process_feed()
+        print("Bot run completed successfully")
+    except Exception as e:
+        print(f"Error running bot: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    asyncio.run(run_once())
+EOF
         
-        python run_once.py
+        python run_github_action.py
     
     - name: Commit database changes
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
         
-        # Check if database file exists and has changes
+        # Check if database file exists
         if [ -f lovable_status.db ]; then
           git add lovable_status.db
-          git diff --staged --quiet || git commit -m "Update incident database [skip ci]"
+          
+          # Check if there are changes to commit
+          if ! git diff --staged --quiet; then
+            git commit -m "Update incident database [skip ci]" \
+              -m "Automated update from GitHub Actions"
+            echo "Database changes committed"
+          else
+            echo "No database changes to commit"
+          fi
+        else
+          echo "No database file found"
         fi
     
     - name: Push changes
-      uses: ad-m/github-push-action@master
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: ${{ github.ref }}
+      if: success()
+      run: |
+        git push origin main || echo "No changes to push"
