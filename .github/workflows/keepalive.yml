@@ -1,0 +1,22 @@
+name: Keep Workflow Active
+
+on:
+  schedule:
+    # Run weekly to prevent GitHub from disabling the workflow
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Keep workflow active
+        uses: gautamkrishnar/keepalive-workflow@v2
+        with:
+          time_elapsed: 50  # Days before creating commit (default 50)
+          commit_message: 'Automated commit to keep workflow active [skip ci]'

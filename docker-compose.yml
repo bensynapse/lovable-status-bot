@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  lovable-status-bot:
+    build: .
+    container_name: lovable-status-bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./lovable_status.db:/app/lovable_status.db
+      - ./lovable_status_bot.log:/app/lovable_status_bot.log
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
