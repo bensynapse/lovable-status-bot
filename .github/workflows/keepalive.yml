@@ -7,16 +7,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
+  contents: read
 
 jobs:
   keepalive:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Keep workflow active
-        uses: gautamkrishnar/keepalive-workflow@v2
-        with:
-          time_elapsed: 50  # Days before creating commit (default 50)
-          commit_message: 'Automated commit to keep workflow active [skip ci]'
+      # GitHub pauses scheduled workflows after 60 days without repository
+      # activity. Re-enabling them through the API resets that clock, which
+      # is what gautamkrishnar/keepalive-workflow did before GitHub blocked it.
+      - name: Keep scheduled workflows active
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for wf in monitor.yml keepalive.yml; do
+            gh workflow enable "$wf"
+          done
